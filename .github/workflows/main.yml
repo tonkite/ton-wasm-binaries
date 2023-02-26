@@ -22,7 +22,7 @@ jobs:
           git submodule update --init
           mkdir build
           cd build
-          cmake -DCMAKE_BUILD_TYPE=Release -DZLIB_LIBRARY=/usr/lib/x86_64-linux-gnu/libz.so -DZLIB_INCLUDE_DIR=$ZLIB_DIR -DOPENSSL_ROOT_DIR=$OPENSSL_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_DIR/include -DOPENSSL_CRYPTO_LIBRARY=$OPENSSL_DIR/libcrypto.so -DOPENSSL_SSL_LIBRARY=$OPENSSL_DIR/libssl.so ..
+          cmake -DCMAKE_BUILD_TYPE=Release ..
           make -j4 fift
           rm -rf *
 
