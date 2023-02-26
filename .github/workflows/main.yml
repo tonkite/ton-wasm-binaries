@@ -1,0 +1,104 @@
+name: build
+
+on: push
+
+jobs:
+  build:
+    name: building
+    runs-on: ubuntu-20.04
+    steps:
+      - name: clone ton
+        run: |
+          git clone --depth=1 --branch=testnet -j8 https://github.com/ton-blockchain/ton.git
+          cd ton
+          git submodule update --init
+
+      - name: setup openssl
+        run: |
+          git clone --depth=1 --branch OpenSSL_1_1_1j https://github.com/openssl/openssl.git
+          cd openssl
+          ./config
+          make -j4
+
+      - name: clone zlib
+        run: |
+          git clone --depth=1 https://github.com/madler/zlib.git
+
+      - name: install emsdk
+        run: |
+          git clone https://github.com/emscripten-core/emsdk.git
+          cd emsdk
+          ./emsdk install 3.1.19
+          ./emsdk activate 3.1.19
+
+      - name: build zlib
+        run: |
+          cd zlib
+          source ../emsdk/emsdk_env.sh
+          emconfigure ./configure --static
+          emmake make -j4
+
+      - name: build openssl
+        run: |
+          cd openssl
+          source ../emsdk/emsdk_env.sh
+          make clean
+          emconfigure ./Configure linux-generic32 no-shared no-dso no-engine no-unit-test no-ui
+          sed -i 's/CROSS_COMPILE=.*/CROSS_COMPILE=/g' Makefile
+          sed -i 's/-ldl//g' Makefile
+          sed -i 's/-O3/-Os/g' Makefile
+          emmake make depend
+          emmake make -j4
+
+      - name: build ton
+        run: |
+          mkdir ton/build
+          cd ton/build
+          source ../../emsdk/emsdk_env.sh
+          ZLIB_DIR=../../zlib
+          OPENSSL_DIR=../../openssl
+          EMSDK_DIR=../../emsdk
+          emcmake cmake \
+            -DUSE_EMSCRIPTEN=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DZLIB_LIBRARY=$ZLIB_DIR/libz.a -DZLIB_INCLUDE_DIR=$ZLIB_DIR \
+            -DOPENSSL_ROOT_DIR=$OPENSSL_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_DIR/include -DOPENSSL_CRYPTO_LIBRARY=$OPENSSL_DIR/libcrypto.a -DOPENSSL_SSL_LIBRARY=$OPENSSL_DIR/libssl.a \
+            -DCMAKE_TOOLCHAIN_FILE=$EMSDK_DIR/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake \
+            -DCMAKE_CXX_FLAGS="-sUSE_ZLIB=1" \
+            ..
+          emmake make -j4 emulator-emscripten
+          emmake make -j4 funcfiftlib
+
+      - name: prepare artifacts
+        run: |
+          mkdir artifacts
+          cd ton/build
+          cp emulator/emulator-emscripten.wasm emulator/emulator-emscripten.js ../../artifacts
+          cp crypto/funcfiftlib.wasm crypto/funcfiftlib.js ../../artifacts
+
+      - name: upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: ton-wasm-binaries
+          path: artifacts/*
+          retention-days: 1
+
+  release:
+    name: release
+    runs-on: ubuntu-20.04
+    needs: build
+    if: github.ref_type == 'tag'
+    steps:
+      - name: create directory for artifacts
+        run: mkdir artifacts
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v2
+        with:
+          path: artifacts
+
+      - name: release artifacts
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "artifacts/*"
+          token: ${{ secrets.GITHUB_TOKEN }}
