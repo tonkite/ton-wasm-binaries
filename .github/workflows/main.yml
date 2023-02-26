@@ -7,22 +7,27 @@ jobs:
     name: building
     runs-on: ubuntu-20.04
     steps:
+      - name: install dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive 
+          TZ: Etc/UTC 
+        run: apt-get install -y build-essential git make cmake clang libgflags-dev zlib1g-dev libssl-dev libreadline-dev libmicrohttpd-dev pkg-config libgsl-dev python3 python3-dev python3-pip nodejs
+
       - name: clone ton
         run: |
-          git clone --depth=1 --branch=testnet -j8 https://github.com/ton-blockchain/ton.git
+          git clone --depth=1 --branch=testnet https://github.com/ton-blockchain/ton.git
           cd ton
           git submodule update --init
 
-      - name: setup openssl
+      - name: clone and build openssl
         run: |
           git clone --depth=1 --branch OpenSSL_1_1_1j https://github.com/openssl/openssl.git
           cd openssl
           ./config
-          make -j4
+          make -j$(nproc)
 
       - name: clone zlib
-        run: |
-          git clone --depth=1 https://github.com/madler/zlib.git
+        run: git clone --depth=1 https://github.com/madler/zlib.git
 
       - name: install emsdk
         run: |
@@ -36,9 +41,9 @@ jobs:
           cd zlib
           source ../emsdk/emsdk_env.sh
           emconfigure ./configure --static
-          emmake make -j4
+          emmake make -j$(nproc)
 
-      - name: build openssl
+      - name: build openssl (emscripten)
         run: |
           cd openssl
           source ../emsdk/emsdk_env.sh
@@ -48,26 +53,19 @@ jobs:
           sed -i 's/-ldl//g' Makefile
           sed -i 's/-O3/-Os/g' Makefile
           emmake make depend
-          emmake make -j4
+          emmake make -j$(nproc)
 
       - name: build ton
         run: |
+          source emsdk/emsdk_env.sh
+          export ZLIB_DIR="$(pwd)/zlib"
+          export OPENSSL_DIR="$(pwd)/openssl"
+          export EMSDK_DIR="$(pwd)/emsdk"
           mkdir ton/build
           cd ton/build
-          source ../../emsdk/emsdk_env.sh
-          ZLIB_DIR=../../zlib
-          OPENSSL_DIR=../../openssl
-          EMSDK_DIR=../../emsdk
-          emcmake cmake \
-            -DUSE_EMSCRIPTEN=ON \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DZLIB_LIBRARY=$ZLIB_DIR/libz.a -DZLIB_INCLUDE_DIR=$ZLIB_DIR \
-            -DOPENSSL_ROOT_DIR=$OPENSSL_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_DIR/include -DOPENSSL_CRYPTO_LIBRARY=$OPENSSL_DIR/libcrypto.a -DOPENSSL_SSL_LIBRARY=$OPENSSL_DIR/libssl.a \
-            -DCMAKE_TOOLCHAIN_FILE=$EMSDK_DIR/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake \
-            -DCMAKE_CXX_FLAGS="-sUSE_ZLIB=1" \
-            ..
-          emmake make -j4 emulator-emscripten
-          emmake make -j4 funcfiftlib
+          emcmake cmake -DUSE_EMSCRIPTEN=ON -DCMAKE_BUILD_TYPE=Release -DZLIB_LIBRARY=$ZLIB_DIR/libz.a -DZLIB_INCLUDE_DIR=$ZLIB_DIR -DOPENSSL_ROOT_DIR=$OPENSSL_DIR -DOPENSSL_INCLUDE_DIR=$OPENSSL_DIR/include -DOPENSSL_CRYPTO_LIBRARY=$OPENSSL_DIR/libcrypto.a -DOPENSSL_SSL_LIBRARY=$OPENSSL_DIR/libssl.a -DCMAKE_TOOLCHAIN_FILE=$EMSDK_DIR/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake -DCMAKE_CXX_FLAGS="-sUSE_ZLIB=1" ..
+          emmake make -j$(nproc) emulator-emscripten
+          emmake make -j$(nproc) funcfiftlib
 
       - name: prepare artifacts
         run: |
@@ -75,6 +73,13 @@ jobs:
           cd ton/build
           cp emulator/emulator-emscripten.wasm emulator/emulator-emscripten.js ../../artifacts
           cp crypto/funcfiftlib.wasm crypto/funcfiftlib.js ../../artifacts
+          cd ../../artifacts
+          echo -n "module.exports = { wasmBinary: '" > emulator-emscripten.wasm.js
+          cat emulator-emscripten.wasm | base64 --wrap=0 >> emulator-emscripten.wasm.js
+          echo -n "' };" >> emulator-emscripten.wasm.js
+          echo -n "module.exports = { wasmBinary: '" > output/funcfiftlib.wasm.js
+          cat output/funcfiftlib.wasm | base64 --wrap=0 >> output/funcfiftlib.wasm.js
+          echo -n "' };" >> output/funcfiftlib.wasm.js
 
       - name: upload artifacts
         uses: actions/upload-artifact@v2
