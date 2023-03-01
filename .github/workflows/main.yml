@@ -23,7 +23,7 @@ jobs:
           mkdir build
           cd build
           cmake -DCMAKE_BUILD_TYPE=Release ..
-          make -j4 fift
+          make -j4 gen_fif fift
           rm -rf *
 
       - name: clone and build openssl
@@ -94,9 +94,9 @@ jobs:
           echo -n "module.exports = { wasmBinary: '" > emulator-emscripten.wasm.js
           cat emulator-emscripten.wasm | base64 --wrap=0 >> emulator-emscripten.wasm.js
           echo -n "' };" >> emulator-emscripten.wasm.js
-          echo -n "module.exports = { wasmBinary: '" > output/funcfiftlib.wasm.js
-          cat output/funcfiftlib.wasm | base64 --wrap=0 >> output/funcfiftlib.wasm.js
-          echo -n "' };" >> output/funcfiftlib.wasm.js
+          echo -n "module.exports = { wasmBinary: '" > funcfiftlib.wasm.js
+          cat output/funcfiftlib.wasm | base64 --wrap=0 >> funcfiftlib.wasm.js
+          echo -n "' };" >> funcfiftlib.wasm.js
 
       - name: upload artifacts
         uses: actions/upload-artifact@v2
