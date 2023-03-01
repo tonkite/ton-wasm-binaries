@@ -95,7 +95,7 @@ jobs:
           cat emulator-emscripten.wasm | base64 --wrap=0 >> emulator-emscripten.wasm.js
           echo -n "' };" >> emulator-emscripten.wasm.js
           echo -n "module.exports = { wasmBinary: '" > funcfiftlib.wasm.js
-          cat output/funcfiftlib.wasm | base64 --wrap=0 >> funcfiftlib.wasm.js
+          cat funcfiftlib.wasm | base64 --wrap=0 >> funcfiftlib.wasm.js
           echo -n "' };" >> funcfiftlib.wasm.js
 
       - name: upload artifacts
